@@ -84,4 +84,22 @@ updated_at) values
 
 show triggers;
 
+/* (по желанию) Пусть имеется любая таблица с календарным
+ полем created_at. Создайте запрос, который удаляет устаревшие 
+ записи из таблицы, оставляя только 5 самых свежих записей.*/
+
+-- вариант доработал
+select @ctn := created_at from products
+order by created_at desc limit 5;
+delete from products where created_at < @ctn;
+
+-- вариант решения взят из интернета
+DELETE from products WHERE created_at < 
+  (SELECT created_at FROM 
+    (SELECT created_at FROM products ORDER BY created_at DESC LIMIT 5) as t 
+  ORDER BY created_at asc limit 1)
+ ;
+  
+  
+  
 
