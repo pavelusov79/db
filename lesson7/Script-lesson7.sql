@@ -3,14 +3,20 @@
 
 -- вставим данные в табл orders для user_id 1,3 и 5
 INSERT orders(user_id, created_at, updated_at) VALUES
-(1, '2018-03-25 15:00:11', NOW()),
-(3, '2019-11-01 22:43:56', NOW()),
-(5, NOW(), NOW());
+(4, '2018-03-25 15:00:11', NOW()),
+(4, '2019-11-01 22:43:56', NOW()),
+(4, NOW(), NOW());
 SELECT * FROM orders;
 
 -- выполним сам запрос
 SELECT * FROM users
 WHERE EXISTS (SELECT * FROM orders WHERE user_id = users.id);
+
+-- вариант с join
+select distinct u.id, name, birthday_at, u.created_at, u.updated_at 
+from users u 
+join orders o on u.id = o.user_id;
+-- group by u.id ; -- если не использовать distinct
 
 /* 2. Выведите список товаров products и разделов catalogs, который 
 соответствует товару*/
@@ -21,6 +27,13 @@ AS catalogs_name,
 created_at, updated_at
 FROM products
 ORDER BY catalogs_name;
+
+-- вариант с использованием inner join (inner не пишется)
+select p.id, p.name, p.price, description, c.name,
+created_at, updated_at
+from products p 
+join catalogs c on c.id = p.catalog_id
+order by c.name;
 
 /* 3.(по желанию) Пусть имеется таблица рейсов flights (id, from, to)
 и таблица городов cities (label, name). Поля from, to и label 
@@ -63,6 +76,12 @@ FROM flights;
 
 
 
+-- с join
+
+select flights.from_, flights.to_ 
+from cities c2 
+join flights on c2.name = flights.from_ 
+join flights f2 on c2.name = f2.to_ ;
 
 
 
