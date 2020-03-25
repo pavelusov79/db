@@ -988,28 +988,149 @@ insert watch_orders(buyer_id, model_id, city_id, quantity, created_at) values
 (41, 283, 4, 1, '2020-02-03'),
 (42, 168, 6, 2, '2020-02-12'),
 (43, 192, 7, 1, '2020-01-18'),
-(44, 249, 3, 1, '2020-02-23');
+(44, 249, 3, 1, '2020-02-23'),
+(44, 159, 3, 2, '2020-02-23');
 
 
 -- ////////////////////////////////////////////
 -- запросы к таблицам
+-- выведем продажи по магазинам за декабрь 2019
+select wat.name, wat.price, wat.catalogs_id, wo.quantity, 
+wo.city_id, wo.created_at
+from watch_orders wo
+join watches wat on wat.id = wo.model_id
+where wo.created_at like '2019-12-%';
 
+-- выведем сумму заказов в городе Мурманск за декабрь 2019 
+select sum(wat.price) as 'сумма заказов в декабре 2019', 
+cities.city_name as 'город' 
+from watch_orders wo
+join watches wat on wat.id = wo.model_id 
+join city_address ci on ci.id = wo.city_id 
+join cities on cities.id = ci.city_id 
+where wo.created_at like '2019-12-%'and wo.city_id = 8;
 
+/* выведем сумму заказов в городе Ростове-на-Дону (id=13) за 
+февраль 2020 с группировкой по категориям часов (муж, женс., детс.) */
+select sum(wat.price) as 'сумма заказов Ростов за фев.2020', 
+(CASE
+	when wat.cat_id = 1 then 'мужские'
+	when wat.cat_id = 2 then 'женские'
+	else 'детские'
+end) as 'категория'
+from watch_orders wo
+join watches wat on wat.id = wo.model_id 
+where wo.created_at like '2020-02-%'and wo.city_id = 13
+group by wat.cat_id;
 
+/* выведем список моделей часов с ценой более 20 000 р которые были 
+заказаны покупателями (поля: модель, страна, кол-во, цена, ручные или 
+элитные (catalogs_id) с сортировкой от большей цены к меньшей*/
+select wa.name as 'модель часов', c.country_name, wo.quantity, 
+wa.price, wa.catalogs_id
+from watch_orders wo 
+join watches wa on wa.id = wo.model_id 
+join country_of_origin c on c.id = wa.country_id 
+where wa.price > 20000
+order by wa.price desc;
 
+/* выведем мужские модели в наличии (с учетом таблицы stocks)
+где цена до 100 000р с металлическим браслетом с сортировкой от 
+большей цены к меньшей*/
+select s.id, wa.name, cit.city_name, wa.price, s.quantity, 
+	`as`.strap_name, wa.cat_id, s.`date`
+from watches wa
+join stocks s on s.model_id = wa.id 
+join watch_strap `as` on `as`.id = wa.strap_id 
+join city_address ci on s.city_id = ci.id 
+join cities cit on cit.id = ci.city_id 
+where wa.strap_id = 1 and wa.case_id = 1 and wa.price < 100000
+order by wa.price desc;
 
+-- выведем кол-во моделей женских часов в БД с группировкой по странам
+select c.country_name, count(*) as total
+from watches w
+join country_of_origin c on c.id = w.country_id 
+where cat_id = 2
+group by country_id 
+order by total desc;
 
+-- выведем общие суммы заказов покупателей по городам за 2019г
+select ci.city_name, sum(wa.price) as total
+from watch_orders wo 
+join watches wa on wa.id = wo.model_id 
+join cities ci on ci.id = wo.city_id
+where year(wo.created_at) = '2019' 
+group by ci.city_name
+order by total desc;
 
+/* выведем позиции часов с действующей скидкой 
+(модель, цена, кол-во, размер скидки, цена со скидкой, 
+дата начала скидки) */
+select w.name, w.price, s.quantity, s.city_id, d.discount, 
+(w.price  - w.price * d.discount / 100) as discount_price, 
+d.started_at
+from discounts d 
+join watches w on w.id = d.model_id 
+join stocks s on s.model_id = w.id 
+where d.finished_at is null
+order by w.price desc;
 
+/* создадим представление "распродажа" (столбцы: модель, брэнд,
+категория, размер скидки, распродажная цена) где кол-во ед. 
+модели больше 2-х и акция на скидки текущая*/
+create or replace view sales as 
+select w.name, b.brand_name, d.discount, 
+(w.price - w.price * d.discount / 100) as discount_price 
+from watches w
+join discounts d on w.id = d.model_id 
+join  brands b on w.brand_id = b.id 
+join stocks s on s.model_id = w.id 
+where (d.finished_at is null or d.finished_at > now()) 
+and s.quantity >= 2;
 
+-- выведем представление sales 
+select * from sales;
 
+/* создадим предствление заказ последнего покупателя(корзину), 
+ столбцы: модель, цена, кол-во, стоимость */
+create or replace view buyer_order as 
+select wo.buyer_id, w.name, w.price, wo.quantity, 
+(w.price * wo.quantity) as order_cost
+from watch_orders wo 
+join watches w on w.id = wo.model_id  
+where wo.buyer_id = LAST_INSERT_ID() ;
 
+-- выведем представление byuer_order
+select * from buyer_order;
 
+/* создадим представление 'total' при оформлении последнего заказа
+покупателя с последним buyer_id */
+create or replace view total as 
+select  
+sum(w.price * wo.quantity) as total
+from watch_orders wo 
+join watches w on w.id = wo.model_id  
+where wo.buyer_id = LAST_INSERT_ID() ;
 
+-- выведем представление total последнего заказа
+select * from total ;
 
-
-
-
+-- /////// вопрос /////////
+-- если сделать запрос заказ последнего покупателя, который учитывает 
+-- есть ли текущая акция на скидку модели часов, то при заказе нескольких
+-- позиций берет только последнее значение, почему???
+select wo.buyer_id, w.name,
+if (d.finished_at is null, 
+(w.price - w.price * d.discount / 100), w.price ) as price,
+wo.quantity, 
+if (d.finished_at is null, 
+(w.price - w.price * d.discount / 100)*wo.quantity , 
+(w.price * wo.quantity)) as order_cost
+from watch_orders wo 
+join watches w on w.id = wo.model_id 
+join discounts d on w.id = d.model_id 
+where wo.buyer_id = LAST_INSERT_ID() ;
 
 
 
